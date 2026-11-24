@@ -61,8 +61,17 @@ if mode in st.session_state:
     result = st.session_state[mode]
     st.subheader("本次分析原文")
     st.text(result["法条"])
+    st.subheader("针对谁，规定了什么行为？")
+    for row in result["分析"]:
+        st.write(f"**{row['主体']}** · {row['条件']} · {row['行为']}")
+    st.subheader("整段视频提示词")
+    result["整段视频提示词"] = "制作一条普法短视频，围绕以下条文展开：" + result["法条"] + "\n" + "\n".join(
+        f"镜头{i}：{shot['视频提示词']} 旁白：{shot['旁白']}"
+        for i, shot in enumerate(result["分镜"], 1)
+    )
+    st.code(result["整段视频提示词"], language=None, wrap_lines=True)
     for i, row in enumerate(result["分析"], 1):
-        with st.expander(f"分析 {i} · {row['分类']}", expanded=True):
+        with st.expander(f"分析 {i} · {row['分类']}", expanded=False):
             for field in ("原文", "主体", "条件", "行为", "理由"):
                 st.text(f"{field}｜{row[field]}")
             for card in row["依据"]:
