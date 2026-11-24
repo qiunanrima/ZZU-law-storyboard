@@ -1,5 +1,6 @@
 import json
 import streamlit as st
+from knowledge import search
 from engine import ROOT, SAMPLE, generate, parse_cards, converse
 
 st.set_page_config(page_title="法条分镜工作台", page_icon="📖")
@@ -14,6 +15,24 @@ with st.expander("课程框架与参考资料", expanded=False):
     framework = st.text_input("分析框架", "假定条件、行为模式（可为／应为／勿为）、法律关系主体与客体、权利义务、法律后果、常见误区", disabled=demo)
     cards_file = st.file_uploader("理论卡 JSON（替换内置卡片）", type="json", disabled=demo)
     shots_file = st.file_uploader("分镜示例 Markdown 或 TXT（替换内置示例）", type=["md","txt"], disabled=demo)
+    kb = None
+    if not demo and st.checkbox("接入阿里云百炼知识库"):
+        workspace = st.text_input("百炼业务空间 ID（北京）")
+        service = st.text_input("已发布的知识检索服务 ID（agent_id）")
+        secret = st.text_input("知识库 API Key", type="password")
+        kb = (workspace, service, secret)
+        probe = st.text_input("测试检索词", "行为模式")
+        if st.button("测试知识库连接"):
+            try:
+                if not probe.strip():
+                    raise ValueError("请输入测试检索词。")
+                matches = search(probe, kb)
+                st.info(f"连接成功，命中 {len(matches)} 个片段。")
+                for hit in matches:
+                    st.text(hit["source"] + "｜" + hit["text"][:180])
+            except ValueError as exc:
+                st.error(str(exc))
+
 def materials():
     raw = cards_file.getvalue().decode("utf-8-sig") if cards_file else (ROOT / "materials/theory.json").read_text(encoding="utf-8")
     examples = shots_file.getvalue().decode("utf-8-sig") if shots_file else (ROOT / "materials/shots.md").read_text(encoding="utf-8")
@@ -34,9 +53,12 @@ if chat:
             cards, examples = materials()
             with st.spinner("正在处理…"):
                 if mode in st.session_state:
-                    reply, result = converse(question, history, st.session_state[mode], cards)
+                    current = st.session_state[mode]
+                    hits = search(question + "\n" + current["法条"], kb) if kb else []
+                    reply, result = converse(question, history, current, cards, hits)
                 else:
-                    result = generate(question.strip(), cards, examples, framework)
+                    hits = search(question, kb) if kb else []
+                    result = generate(question.strip(), cards, examples, framework, hits)
                     reply = "分析和分镜整理好了，往下就能看。你想先聊哪一处？"
             history.extend([{"role": "user", "content": question}, {"role": "assistant", "content": reply}])
             st.session_state[mode] = result
@@ -52,10 +74,10 @@ elif st.button("查看示例" if demo else "分析并生成分镜", type="primar
                 result = json.loads((ROOT / "demo.json").read_text(encoding="utf-8"))
             else:
                 cards, examples = materials()
-                result = generate(article.strip(), cards, examples, framework)
+                hits = search(article, kb) if kb else []
+                result = generate(article.strip(), cards, examples, framework, hits)
             st.session_state[mode] = result
     except ValueError as exc:
-        st.session_state.pop(mode, None)
         st.error(str(exc))
 if mode in st.session_state:
     result = st.session_state[mode]
