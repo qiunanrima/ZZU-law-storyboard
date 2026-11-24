@@ -54,8 +54,8 @@ def model(instructions, data):
         raise ValueError("模型返回格式异常，请重试或更换模型。") from exc
 
 
-def generate(article, cards, examples, framework):
-    hits = retrieve(article, cards)
+def generate(article, cards, examples, framework, external=()):
+    hits = list(external) + retrieve(article, cards)
     rows = model("按分析框架逐项分析。理由中列明客体、权利义务、法律后果及常见误区，缺乏原文支持时注明。分类考虑可为、应为、勿为。每项字段：原文（连续逐字引文）、主体、条件、行为、分类、理由、依据（命中资料编号的整数数组，从1开始）。未写明填未明示。证据不足标待核对。保留例外，不补写处罚。",
                  {"法条": article, "框架": framework, "资料": dict(enumerate(hits, 1))})
     for row in rows:
@@ -89,13 +89,13 @@ def check_fields(item, names):
     if not isinstance(item, dict) or not all(isinstance(item.get(k), str) and item[k].strip() for k in names.split()):
         raise ValueError("模型输出缺少必要字段，请重试。")
 
-def converse(question, history, result, cards):
+def converse(question, history, result, cards, external=()):
     turns = model(
         "用清晰、简洁的中文解答法条分析与分镜制作问题。回答本轮用户问题，结合当前作品、理论卡和最近对话。"
         "引述法条只用给定原文，未明示的后果请说明。若被要求修改分镜，返回修改后的完整分镜数组，"
         "保留原分析编号、未涉及的镜头及字段。普通问答时分镜为null。仅返回一个对象组成的数组，对象字段为答复、分镜。",
         {"本轮问题": question, "最近对话": history[-12:], "当前作品": result,
-         "参考卡": retrieve(question + result["法条"], cards)})
+         "参考卡": list(external) + retrieve(question + result["法条"], cards)})
     turn = turns[0]
     check_fields(turn, "答复")
     shots = turn.get("分镜")
